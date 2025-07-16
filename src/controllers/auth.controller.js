@@ -81,6 +81,7 @@ async function testApi(req, res) {
             endpoints: [
                 'GET /api/auth/test - Prueba de API',
                 'GET /api/auth/me - Usuario actual (requiere token)',
+                'GET /api/auth/profile - Perfil completo (requiere token)',
                 'GET /api/auth/stats - Estadísticas (requiere token)',
                 'PUT /api/auth/profile - Actualizar perfil (requiere token)',
                 'POST /api/auth/workout - Agregar entrenamiento (requiere token)'
@@ -120,18 +121,72 @@ async function getCurrentUser(req, res) {
     }
 }
 
+// *********************************** OBTENER PERFIL COMPLETO (NUEVO) ***********************************
+
+async function getProfile(req, res) {
+    try {
+        const user = req.user.dbUser;
+        
+        res.json({
+            error: false,
+            message: 'Perfil obtenido exitosamente',
+            profile: {
+                // Datos básicos
+                id: user.id,
+                email: user.email,
+                displayName: user.display_name,
+                photoURL: user.photo_url,
+                emailVerified: user.email_verified,
+                
+                // Datos del perfil
+                age: user.age,
+                weightKg: user.weight_kg,
+                heightCm: user.height_cm,
+                weightGoalKg: user.weight_goal_kg,
+                primaryGoal: user.primary_goal,
+                gender: user.gender,
+                
+                // Estadísticas
+                currentStreak: user.current_streak,
+                totalWorkouts: user.total_workouts,
+                
+                // Fechas
+                joinedAt: user.joined_at,
+                lastLoginAt: user.last_login_at,
+                isActive: user.is_active
+            }
+        });
+    } catch (error) {
+        console.error("Error al obtener perfil:", error);
+        res.status(500).json({ error: "Error interno al obtener perfil" });
+    }
+}
+
 // *********************************** OBTENER ESTADÍSTICAS DE USUARIO ***********************************
 
 async function getStats(req, res) {
     try {
         const user = req.user.dbUser;
 
+        // Calcular días desde que se unió
+        const joinedDaysAgo = Math.floor((new Date() - new Date(user.joined_at)) / (1000 * 60 * 60 * 24));
+        
+        // Calcular BMI si tiene peso y altura
+        let bmi = null;
+        if (user.weight_kg && user.height_cm) {
+            const heightM = user.height_cm / 100;
+            bmi = parseFloat((user.weight_kg / (heightM * heightM)).toFixed(1));
+        }
+
         const stats = {
             currentStreak: user.current_streak || 0,
             totalWorkouts: user.total_workouts || 0,
-            joinedDaysAgo: Math.floor((new Date() - new Date(user.joined_at)) / (1000 * 60 * 60 * 24)),
+            joinedDaysAgo: joinedDaysAgo,
             lastLogin: user.last_login_at,
-            isActive: user.is_active
+            isActive: user.is_active,
+            bmi: bmi,
+            weightProgress: user.weight_goal_kg && user.weight_kg ? 
+                parseFloat((user.weight_kg - user.weight_goal_kg).toFixed(1)) : null
         };
 
         res.json({
@@ -145,13 +200,24 @@ async function getStats(req, res) {
     }
 }
 
-// *********************************** ACTUALIZAR PERFIL DE USUARIO ***********************************
+// *********************************** ACTUALIZAR PERFIL DE USUARIO (EXPANDIDO) ***********************************
 
 async function updateProfile(req, res) {
-    const { displayName, photoURL } = req.body;
+    const { 
+        displayName, 
+        photoURL, 
+        age, 
+        weightKg, 
+        heightCm, 
+        weightGoalKg, 
+        primaryGoal, 
+        gender 
+    } = req.body;
+    
     const firebaseUid = req.user.firebaseUid;
 
-    if (!displayName && !photoURL) {
+    // Verificar que al menos un campo esté presente
+    if (!displayName && !photoURL && !age && !weightKg && !heightCm && !weightGoalKg && !primaryGoal && !gender) {
         return res.status(400).json({
             error: true,
             message: 'No hay datos para actualizar'
@@ -163,6 +229,7 @@ async function updateProfile(req, res) {
         const values = [];
         let paramIndex = 1;
 
+        // Campos básicos
         if (displayName !== undefined) {
             updates.push(`display_name = $${paramIndex++}`);
             values.push(displayName);
@@ -171,6 +238,37 @@ async function updateProfile(req, res) {
         if (photoURL !== undefined) {
             updates.push(`photo_url = $${paramIndex++}`);
             values.push(photoURL);
+        }
+
+        // Nuevos campos del perfil
+        if (age !== undefined) {
+            updates.push(`age = $${paramIndex++}`);
+            values.push(age);
+        }
+        
+        if (weightKg !== undefined) {
+            updates.push(`weight_kg = $${paramIndex++}`);
+            values.push(weightKg);
+        }
+        
+        if (heightCm !== undefined) {
+            updates.push(`height_cm = $${paramIndex++}`);
+            values.push(heightCm);
+        }
+        
+        if (weightGoalKg !== undefined) {
+            updates.push(`weight_goal_kg = $${paramIndex++}`);
+            values.push(weightGoalKg);
+        }
+        
+        if (primaryGoal !== undefined) {
+            updates.push(`primary_goal = $${paramIndex++}`);
+            values.push(primaryGoal);
+        }
+        
+        if (gender !== undefined) {
+            updates.push(`gender = $${paramIndex++}`);
+            values.push(gender);
         }
 
         updates.push(`updated_at = NOW()`);
@@ -183,14 +281,22 @@ async function updateProfile(req, res) {
             RETURNING *
         `, values);
 
+        const updatedUser = result.rows[0];
+
         res.json({
             error: false,
             message: 'Perfil actualizado exitosamente',
-            user: {
-                id: result.rows[0].id,
-                email: result.rows[0].email,
-                displayName: result.rows[0].display_name,
-                photoURL: result.rows[0].photo_url
+            profile: {
+                id: updatedUser.id,
+                email: updatedUser.email,
+                displayName: updatedUser.display_name,
+                photoURL: updatedUser.photo_url,
+                age: updatedUser.age,
+                weightKg: updatedUser.weight_kg,
+                heightCm: updatedUser.height_cm,
+                weightGoalKg: updatedUser.weight_goal_kg,
+                primaryGoal: updatedUser.primary_goal,
+                gender: updatedUser.gender
             }
         });
     } catch (error) {
@@ -219,12 +325,6 @@ async function addWorkout(req, res) {
             [userId]
         );
 
-        // Aquí podrías crear una tabla de workouts si quieres más detalle
-        // await query(`
-        //     INSERT INTO workouts (user_id, type, duration, intensity, notes, created_at)
-        //     VALUES ($1, $2, $3, $4, $5, NOW())
-        // `, [userId, type, duration, intensity, notes]);
-
         res.json({
             error: false,
             message: 'Entrenamiento agregado exitosamente',
@@ -250,7 +350,6 @@ async function getWorkouts(req, res) {
         const workoutData = {
             total: userResult.rows[0]?.total_workouts || 0,
             streak: userResult.rows[0]?.current_streak || 0,
-            // Aquí podrías obtener el historial detallado si tienes tabla de workouts
             recent: []
         };
 
@@ -298,8 +397,9 @@ module.exports = {
     verifyToken,
     testApi,
     getCurrentUser,
+    getProfile,      // NUEVO
     getStats,
-    updateProfile,
+    updateProfile,   // EXPANDIDO
     addWorkout,
     getWorkouts,
     updateStreak

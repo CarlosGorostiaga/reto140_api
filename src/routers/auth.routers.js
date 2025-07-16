@@ -7,9 +7,10 @@ router.get("/test", authCtrl.testApi);
 
 // Rutas protegidas (requieren token Firebase)
 router.get("/me", authCtrl.verifyToken, authCtrl.getCurrentUser);
+router.get("/profile", authCtrl.verifyToken, authCtrl.getProfile);        // NUEVO
 router.get("/stats", authCtrl.verifyToken, authCtrl.getStats);
 router.get("/workouts", authCtrl.verifyToken, authCtrl.getWorkouts);
-router.put("/profile", authCtrl.verifyToken, authCtrl.updateProfile);
+router.put("/profile", authCtrl.verifyToken, authCtrl.updateProfile);     // EXPANDIDO
 router.put("/streak", authCtrl.verifyToken, authCtrl.updateStreak);
 router.post("/workout", authCtrl.verifyToken, authCtrl.addWorkout);
 
