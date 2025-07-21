@@ -1,7 +1,7 @@
 const { Router } = require("express");
 const router = Router();
 const groupsCtrl = require("../controllers/groups.controller");
-const authCtrl = require("../controllers/auth.controller"); // Solo para el middleware verifyToken
+const authCtrl = require("../controllers/auth.controller"); 
 
 // ================================
 // RUTAS DE GRUPOS (Todas requieren autenticación)
