@@ -45,3 +45,5 @@ jspm_packages/
 
 # Railway
 .railway/
+
+bash.exe.stackdump

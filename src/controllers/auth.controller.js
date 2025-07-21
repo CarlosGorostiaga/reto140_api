@@ -4,6 +4,103 @@ const { auth } = require('../../config/firebase');
 // *********************************** MIDDLEWARE DE VERIFICACIÓN DE TOKEN ***********************************
 
 async function verifyToken(req, res, next) {
+    // 🛠️ BYPASS TOTAL para desarrollo local
+    const isLocalDev = process.env.NODE_ENV !== 'production' || req.get('host')?.includes('localhost:3000');
+    
+    if (isLocalDev) {
+        console.log('🛠️ Modo desarrollo local - bypass auth');
+        
+        try {
+            // Buscar el primer usuario disponible (sin especificar ID como entero)
+            const userResult = await query(
+                'SELECT * FROM users WHERE email = $1 LIMIT 1',
+                ['carlosgorospo@gmail.com'] // ← Cambia por tu email real
+            );
+            
+            let user = userResult.rows[0];
+            
+            // Si no encuentra tu email, buscar cualquier usuario
+            if (!user) {
+                console.log('🔍 Buscando cualquier usuario disponible...');
+                const anyUserResult = await query('SELECT * FROM users LIMIT 1');
+                user = anyUserResult.rows[0];
+            }
+            
+            if (user) {
+                console.log('✅ Usuario real cargado:', user.email);
+                req.user = {
+                    id: user.id,
+                    firebaseUid: user.firebase_uid,
+                    email: user.email,
+                    displayName: user.display_name,
+                    emailVerified: user.email_verified,
+                    dbUser: user
+                };
+            } else {
+                console.log('⚠️ No hay usuarios en BD, creando usuario fake');
+                req.user = {
+                    id: 'fake-uuid-123',
+                    firebaseUid: 'dev-user-local',
+                    email: 'dev@localhost.com',
+                    displayName: 'Usuario Desarrollo',
+                    emailVerified: true,
+                    dbUser: {
+                        id: 'fake-uuid-123',
+                        firebase_uid: 'dev-user-local',
+                        email: 'dev@localhost.com',
+                        display_name: 'Usuario Desarrollo',
+                        photo_url: null,
+                        email_verified: true,
+                        age: 30,
+                        weight_kg: 131,
+                        height_cm: 180,
+                        weight_goal_kg: 100,
+                        primary_goal: 'lose_weight',
+                        gender: 'male',
+                        current_streak: 0,
+                        total_workouts: 0,
+                        joined_at: new Date('2024-01-01'),
+                        last_login_at: new Date(),
+                        is_active: true
+                    }
+                };
+            }
+        } catch (error) {
+            console.error('❌ Error en bypass local:', error.message);
+            // Usuario fake como fallback seguro
+            console.log('🔧 Usando fallback fake');
+            req.user = {
+                id: 'fallback-uuid-456',
+                firebaseUid: 'dev-fallback',
+                email: 'fallback@localhost.com',
+                displayName: 'Fallback Usuario',
+                emailVerified: true,
+                dbUser: {
+                    id: 'fallback-uuid-456',
+                    firebase_uid: 'dev-fallback',
+                    email: 'fallback@localhost.com',
+                    display_name: 'Fallback Usuario',
+                    photo_url: null,
+                    email_verified: true,
+                    age: 30,
+                    weight_kg: 131,
+                    height_cm: 180,
+                    weight_goal_kg: 100,
+                    primary_goal: 'lose_weight',
+                    gender: 'male',
+                    current_streak: 0,
+                    total_workouts: 0,
+                    joined_at: new Date('2024-01-01'),
+                    last_login_at: new Date(),
+                    is_active: true
+                }
+            };
+        }
+        
+        return next();
+    }
+
+    // ✅ Código original para producción
     try {
         const authHeader = req.headers.authorization;
         
@@ -17,7 +114,6 @@ async function verifyToken(req, res, next) {
         const token = authHeader.substring(7);
         const decodedToken = await auth.verifyIdToken(token);
         
-        // Buscar usuario en PostgreSQL
         const userResult = await query(
             'SELECT * FROM users WHERE firebase_uid = $1',
             [decodedToken.uid]
@@ -26,7 +122,6 @@ async function verifyToken(req, res, next) {
         let user = userResult.rows[0];
 
         if (!user) {
-            // Crear usuario si no existe
             const createResult = await query(`
                 INSERT INTO users (firebase_uid, email, display_name, photo_url, email_verified, created_at, updated_at)
                 VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
@@ -42,7 +137,6 @@ async function verifyToken(req, res, next) {
             user = createResult.rows[0];
             console.log('✅ New user created:', user.email);
         } else {
-            // Actualizar último login
             await query(
                 'UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE firebase_uid = $1',
                 [decodedToken.uid]

@@ -27,6 +27,9 @@ const pool = new Pool({
     connectionTimeoutMillis: 10000, // Aumentado para Railway
 });
 
+// 🔧 Variable para evitar cerrar el pool múltiples veces
+let poolClosed = false;
+
 // Función para verificar conexión con reintentos
 const connectWithRetry = async (retries = 5) => {
     for (let i = 0; i < retries; i++) {
@@ -61,11 +64,39 @@ const query = async (text, params) => {
     }
 };
 
-// Manejar cierre graceful
+// 🔧 Función para cerrar pool de manera segura
+const closePool = async () => {
+    if (!poolClosed) {
+        console.log('🔒 Cerrando pool de conexiones...');
+        poolClosed = true;
+        try {
+            await pool.end();
+            console.log('✅ Pool cerrado correctamente');
+        } catch (error) {
+            console.error('❌ Error cerrando pool:', error);
+        }
+    } else {
+        console.log('⚠️ Pool ya cerrado, ignorando...');
+    }
+};
+
+// 🔧 Manejar cierre graceful CORREGIDO
 process.on('SIGINT', async () => {
-    console.log('Cerrando pool de conexiones...');
-    await pool.end();
+    console.log('📶 Señal SIGINT recibida');
+    await closePool();
     process.exit(0);
 });
 
-module.exports = { pool, query };
+process.on('SIGTERM', async () => {
+    console.log('📶 Señal SIGTERM recibida');
+    await closePool();
+    process.exit(0);
+});
+
+// 🔧 Manejar errores no capturados sin cerrar el proceso
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    // No cerrar el proceso, solo logear
+});
+
+module.exports = { pool, query, closePool };
