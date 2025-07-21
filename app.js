@@ -4,6 +4,7 @@ require('dotenv').config();
 
 const { errorHandling } = require("./src/error/errorHandling");
 const authRouters = require("./src/routers/auth.routers");
+const groupsRouters = require("./src/routers/groups.routers"); // NUEVO
 
 const app = express();
 
@@ -51,6 +52,7 @@ app.get('/health', (req, res) => {
 
 // Rutas principales
 app.use('/api/auth', authRouters);
+app.use('/api/groups', groupsRouters); // NUEVO
 
 // 404 Handler
 app.use(function (req, res, next) {
